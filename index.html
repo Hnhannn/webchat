@@ -507,7 +507,10 @@
     </div>
 
     <script>
-        const WS_URL = "ws://localhost:8080";
+        const WS_URL =
+            location.protocol === "https:"
+                ? "wss://" + location.host
+                : "ws://" + location.host;
 
         const bannedWords = [
             "nắc",
@@ -552,6 +555,7 @@
         let lastMessageTime = 0;
         let spamCount = 0;
         let spamResetTimer = null;
+        const USERNAME_KEY = "chatgay_username";
 
         function normalizeText(text) {
             return text
@@ -670,8 +674,11 @@
 
             if (data.type === "name_error") {
                 username = "";
+                localStorage.removeItem(USERNAME_KEY);
+                nameInput.value = "";
                 userModal.classList.remove("hidden");
                 nameError.textContent = data.message;
+                nameInput.focus();
             }
         }
 
@@ -814,6 +821,7 @@
 
             nameError.textContent = "";
             username = name;
+            localStorage.setItem(USERNAME_KEY, username);
 
             userModal.classList.add("hidden");
 
@@ -842,6 +850,24 @@
         nameInput.addEventListener("input", () => {
             nameError.textContent = "";
         });
+
+        const savedUsername = localStorage.getItem(USERNAME_KEY);
+
+        if (savedUsername) {
+            const error = validateName(savedUsername);
+
+            if (!error) {
+                username = savedUsername;
+                nameInput.value = savedUsername;
+                userModal.classList.add("hidden");
+                connectWebSocket();
+            } else {
+                localStorage.removeItem(USERNAME_KEY);
+                nameInput.value = "";
+            }
+        } else {
+            nameInput.focus();
+        }
     </script>
 
 </body>
