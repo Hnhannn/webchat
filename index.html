@@ -555,6 +555,8 @@
         let lastMessageTime = 0;
         let spamCount = 0;
         let spamResetTimer = null;
+        let reconnectTimer = null;
+        let isConnecting = false;
         const USERNAME_KEY = "chatgay_username";
 
         function normalizeText(text) {
@@ -609,10 +611,32 @@
         }
 
         function connectWebSocket() {
+            if (!username) {
+                return;
+            }
+
+            if (
+                socket &&
+                (
+                    socket.readyState === WebSocket.OPEN ||
+                    socket.readyState === WebSocket.CONNECTING
+                )
+            ) {
+                return;
+            }
+
+            if (isConnecting) {
+                return;
+            }
+
+            isConnecting = true;
+
             try {
                 socket = new WebSocket(WS_URL);
 
                 socket.onopen = () => {
+                    isConnecting = false;
+
                     connection.textContent = "● Đã kết nối";
                     connection.className = "connection connected";
 
@@ -632,22 +656,28 @@
                 };
 
                 socket.onclose = () => {
+                    isConnecting = false;
+
                     connection.textContent = "● Mất kết nối";
                     connection.className = "connection disconnected";
 
-                    setTimeout(() => {
-                        if (username) {
+                    if (username && !reconnectTimer) {
+                        reconnectTimer = setTimeout(() => {
+                            reconnectTimer = null;
                             connectWebSocket();
-                        }
-                    }, 3000);
+                        }, 3000);
+                    }
                 };
 
                 socket.onerror = () => {
+                    isConnecting = false;
+
                     connection.textContent = "● Lỗi kết nối";
                     connection.className = "connection disconnected";
                 };
 
             } catch {
+                isConnecting = false;
                 connection.textContent = "● Không thể kết nối";
                 connection.className = "connection disconnected";
             }
@@ -679,6 +709,17 @@
                 userModal.classList.remove("hidden");
                 nameError.textContent = data.message;
                 nameInput.focus();
+
+                if (socket) {
+                    socket.onclose = null;
+                    socket.close();
+                    socket = null;
+                }
+
+                if (reconnectTimer) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = null;
+                }
             }
         }
 
@@ -823,6 +864,17 @@
             username = name;
             localStorage.setItem(USERNAME_KEY, username);
 
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+
+            if (socket) {
+                socket.onclose = null;
+                socket.close();
+                socket = null;
+            }
+
             userModal.classList.add("hidden");
 
             connectWebSocket();
@@ -847,11 +899,19 @@
 
         nameInput.addEventListener("input", () => {
             nameError.textContent = "";
+
+            const name = nameInput.value.trim();
+
+            if (name) {
+                localStorage.setItem(USERNAME_KEY, name);
+            }
         });
 
         const savedUsername = localStorage.getItem(USERNAME_KEY);
 
         if (savedUsername) {
+            nameInput.value = savedUsername;
+
             const error = validateName(savedUsername);
 
             if (!error) {
