@@ -556,8 +556,15 @@
         let spamCount = 0;
         let spamResetTimer = null;
         let reconnectTimer = null;
+        let clientId = localStorage.getItem(CLIENT_ID_KEY);
+
+        if (!clientId) {
+            clientId = crypto.randomUUID();
+            localStorage.setItem(CLIENT_ID_KEY, clientId);
+        }
         let isConnecting = false;
         const USERNAME_KEY = "chatgay_username";
+        const CLIENT_ID_KEY = "chatgay_client_id";
 
         function normalizeText(text) {
             return text
@@ -642,7 +649,8 @@
 
                     socket.send(JSON.stringify({
                         type: "join",
-                        username: username
+                        username: username,
+                        clientId: clientId
                     }));
                 };
 
