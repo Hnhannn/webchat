@@ -825,8 +825,6 @@
 
             userModal.classList.add("hidden");
 
-            addSystemMessage(`${username} đã tham gia chat 💗`);
-
             connectWebSocket();
 
             msgInput.focus();
@@ -864,6 +862,7 @@
             } else {
                 localStorage.removeItem(USERNAME_KEY);
                 nameInput.value = "";
+                nameInput.focus();
             }
         } else {
             nameInput.focus();
