@@ -1,8 +1,9 @@
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
 const WebSocket = require("ws");
 
-const wss = new WebSocket.Server({
-  port: 8080,
-});
+const PORT = process.env.PORT || 10000;
 
 const clients = new Map();
 
@@ -31,11 +32,11 @@ const bannedWords = [
   "cock",
   "bitch",
   "sex",
-  "porn",
+  "porn"
 ];
 
 function normalizeText(text) {
-  return text
+  return String(text)
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -46,7 +47,15 @@ function normalizeText(text) {
 function containsBannedWord(text) {
   const normalized = normalizeText(text);
 
-  return bannedWords.some((word) => normalized.includes(normalizeText(word)));
+  return bannedWords.some((word) =>
+    normalized.includes(normalizeText(word))
+  );
+}
+
+function send(ws, data) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(data));
+  }
 }
 
 function broadcast(data) {
@@ -62,13 +71,72 @@ function broadcast(data) {
 function sendOnline() {
   broadcast({
     type: "online",
-    count: wss.clients.size,
+    count: clients.size
   });
 }
+
+const server = http.createServer((req, res) => {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405, {
+      "Content-Type": "text/plain; charset=UTF-8"
+    });
+
+    res.end("Method Not Allowed");
+    return;
+  }
+
+  let filePath;
+
+  if (req.url === "/" || req.url === "/index.html") {
+    filePath = path.join(__dirname, "index.html");
+  } else {
+    res.writeHead(404, {
+      "Content-Type": "text/plain; charset=UTF-8"
+    });
+
+    res.end("Not Found");
+    return;
+  }
+
+  fs.readFile(filePath, (error, data) => {
+    if (error) {
+      console.error(error);
+
+      res.writeHead(500, {
+        "Content-Type": "text/plain; charset=UTF-8"
+      });
+
+      res.end("Server Error");
+      return;
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=UTF-8",
+      "Cache-Control": "no-cache"
+    });
+
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+
+    res.end(data);
+  });
+});
+
+const wss = new WebSocket.Server({
+  server,
+  path: "/"
+});
 
 wss.on("connection", (ws) => {
   ws.lastMessage = 0;
   ws.spam = 0;
+
+  send(ws, {
+    type: "connected",
+    message: "Đã kết nối máy chủ 💗"
+  });
 
   ws.on("message", (raw) => {
     let data;
@@ -79,51 +147,58 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (!data || typeof data.type !== "string") {
+      return;
+    }
+
     if (data.type === "join") {
+      if (clients.has(ws)) {
+        return;
+      }
+
       const username = String(data.username || "").trim();
 
-      if (!username || username.length > 24) {
-        ws.send(
-          JSON.stringify({
-            type: "name_error",
-            message: "Tên không hợp lệ.",
-          }),
-        );
+      if (username.length < 2 || username.length > 24) {
+        send(ws, {
+          type: "name_error",
+          message: "Tên phải từ 2 đến 24 ký tự."
+        });
 
         return;
       }
 
       if (containsBannedWord(username)) {
-        ws.send(
-          JSON.stringify({
-            type: "name_error",
-            message: "Tên chứa từ không phù hợp.",
-          }),
-        );
+        send(ws, {
+          type: "name_error",
+          message: "Tên chứa từ không phù hợp."
+        });
 
         return;
       }
 
       const exists = [...clients.values()].some(
-        (name) => name.toLowerCase() === username.toLowerCase(),
+        (name) => name.toLowerCase() === username.toLowerCase()
       );
 
       if (exists) {
-        ws.send(
-          JSON.stringify({
-            type: "name_error",
-            message: "Tên này đang được sử dụng.",
-          }),
-        );
+        send(ws, {
+          type: "name_error",
+          message: "Tên này đang được sử dụng."
+        });
 
         return;
       }
 
       clients.set(ws, username);
 
+      send(ws, {
+        type: "join_success",
+        username
+      });
+
       broadcast({
         type: "system",
-        message: `${username} đã tham gia chat 💗`,
+        message: `${username} đã tham gia chat 💗`
       });
 
       sendOnline();
@@ -147,12 +222,10 @@ wss.on("connection", (ws) => {
       }
 
       if (containsBannedWord(message)) {
-        ws.send(
-          JSON.stringify({
-            type: "system",
-            message: "Tin nhắn bị chặn vì chứa nội dung không phù hợp.",
-          }),
-        );
+        send(ws, {
+          type: "system",
+          message: "Tin nhắn bị chặn vì chứa nội dung không phù hợp."
+        });
 
         return;
       }
@@ -163,12 +236,10 @@ wss.on("connection", (ws) => {
         ws.spam++;
 
         if (ws.spam >= 3) {
-          ws.send(
-            JSON.stringify({
-              type: "system",
-              message: "Bạn đang gửi tin quá nhanh.",
-            }),
-          );
+          send(ws, {
+            type: "system",
+            message: "Bạn đang gửi tin quá nhanh 💗"
+          });
 
           return;
         }
@@ -180,29 +251,35 @@ wss.on("connection", (ws) => {
 
       broadcast({
         type: "message",
-        username: username,
-        message: message,
-        time: new Date().toISOString(),
+        username,
+        message,
+        time: new Date().toISOString()
       });
+
+      return;
     }
   });
 
   ws.on("close", () => {
     const username = clients.get(ws);
 
-    clients.delete(ws);
-
     if (username) {
+      clients.delete(ws);
+
       broadcast({
         type: "system",
-        message: `${username} đã rời khỏi chat 💕`,
+        message: `${username} đã rời khỏi chat 💕`
       });
-    }
 
-    sendOnline();
+      sendOnline();
+    }
   });
 
-  sendOnline();
+  ws.on("error", (error) => {
+    console.error("WebSocket error:", error.message);
+  });
 });
 
-console.log("chatGAY WebSocket running on ws://localhost:8080");
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`chatGAY running on 0.0.0.0:${PORT}`);
+});
