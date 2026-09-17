@@ -899,32 +899,30 @@
 
         nameInput.addEventListener("input", () => {
             nameError.textContent = "";
-
-            const name = nameInput.value.trim();
-
-            if (name) {
-                localStorage.setItem(USERNAME_KEY, name);
-            }
         });
 
         const savedUsername = localStorage.getItem(USERNAME_KEY);
 
         if (savedUsername) {
-            nameInput.value = savedUsername;
-
-            const error = validateName(savedUsername);
+            const savedName = savedUsername.trim();
+            const error = validateName(savedName);
 
             if (!error) {
-                username = savedUsername;
-                nameInput.value = savedUsername;
+                username = savedName;
+                nameInput.value = savedName;
                 userModal.classList.add("hidden");
-                connectWebSocket();
+
+                setTimeout(() => {
+                    connectWebSocket();
+                }, 0);
             } else {
                 localStorage.removeItem(USERNAME_KEY);
                 nameInput.value = "";
+                userModal.classList.remove("hidden");
                 nameInput.focus();
             }
         } else {
+            userModal.classList.remove("hidden");
             nameInput.focus();
         }
     </script>
